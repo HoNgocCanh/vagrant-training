@@ -18,6 +18,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax'])) {
         $_SESSION['id'] = $user[0]['id'];
         session_regenerate_id(true); // bảo mật
 
+
+         // 👉 Set cookie PHPSESSID để browser tự gửi lại ở request sau
+        setcookie("PHPSESSID", session_id(), [
+            "path" => "/",
+            "httponly" => true,
+            "samesite" => "Lax"
+        ]);
+
         echo json_encode([
             'success' => true,
             'token' => session_id(),
@@ -101,8 +109,10 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
 
     const res = await fetch('login.php', {
         method: 'POST',
-        body: formData
+        body: formData,
+        credentials: 'include' // <- rất quan trọng: cho phép nhận Set-Cookie và gửi cookie sau này
     });
+
 
     const data = await res.json();
 

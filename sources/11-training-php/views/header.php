@@ -1,6 +1,4 @@
 <?php
-
-
 $id = '';
 if (!empty($_SESSION['id'])) {
     $id = $_SESSION['id'];
