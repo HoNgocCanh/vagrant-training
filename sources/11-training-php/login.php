@@ -1,12 +1,43 @@
 <?php
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+
 require_once 'models/UserModel.php';
 require_once 'session_middleware.php';
+require_once 'middleware/csrf.php';
+
+// Khởi session
+start_session_from_request();
+
+// Debug session info
+debug_session_info(); // Thêm dòng này
+
+error_log("PHPSESSID cookie: " . ($_COOKIE['PHPSESSID'] ?? 'null'));
+error_log("Session ID hiện tại: " . session_id());
+error_log("Session array: " . print_r($_SESSION, true));
+
+
+
+
 
 $userModel = new UserModel();
 
-// Nếu request là AJAX POST, xử lý login
+// Xử lý AJAX login
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax'])) {
-    header('Content-Type: application/json');
+    header('Content-Type: application/json; charset=utf-8');
+
+    // Kiểm tra CSRF token
+    $csrfToken = $_POST['csrf_token'] ?? '';
+    error_log("SESSION CSRF: " . ($_SESSION['csrf_token'] ?? 'null'));
+    error_log("POST CSRF: " . $csrfToken);
+
+    if (!validate_csrf_token($csrfToken)) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'CSRF token invalid'
+        ]);
+        exit;
+    }
 
     $username = $_POST['username'] ?? '';
     $password = $_POST['password'] ?? '';
@@ -14,22 +45,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax'])) {
     $user = $userModel->auth($username, $password);
 
     if ($user) {
-        session_start();
         $_SESSION['id'] = $user[0]['id'];
-        session_regenerate_id(true); // bảo mật
 
-
-         // 👉 Set cookie PHPSESSID để browser tự gửi lại ở request sau
-        setcookie("PHPSESSID", session_id(), [
-            "path" => "/",
-            "httponly" => true,
-            "samesite" => "Lax"
-        ]);
-
+        // Không regen session để giữ CSRF token
         echo json_encode([
             'success' => true,
-            'token' => session_id(),
-            'user_id' => $_SESSION['id']
+            'user_id' => $_SESSION['id'],
+            'csrf_token' => $_SESSION['csrf_token']
         ]);
         exit;
     } else {
@@ -44,41 +66,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax'])) {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>User form</title>
-    <?php include 'views/meta.php' ?>
+    <title>User Login</title>
+    <?php include 'views/meta.php'; ?>
 </head>
 <body>
-<?php include 'views/header.php'?>
+<?php include 'views/header.php'; ?>
 
 <div class="container">
     <div id="loginbox" style="margin-top:50px;" class="mainbox col-md-6 col-md-offset-3 col-sm-8 col-sm-offset-2">
-        <div class="panel panel-info" >
+        <div class="panel panel-info">
             <div class="panel-heading">
                 <div class="panel-title">Login</div>
-                <div style="float:right; font-size: 80%; position: relative; top:-10px">
+                <div style="float:right; font-size:80%; top:-10px; position:relative;">
                     <a href="#">Forgot password?</a>
                 </div>
             </div>
 
-            <div style="padding-top:30px" class="panel-body" >
+            <div class="panel-body" style="padding-top:30px;">
                 <form id="loginForm" class="form-horizontal" role="form">
+                    <!-- CSRF token -->
+                    <?php echo csrf_input(); ?>
 
-                    <div class="margin-bottom-25 input-group">
+                    <div class="input-group margin-bottom-25">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input id="login-username" type="text" class="form-control" name="username" placeholder="username or email">
+                        <input type="text" class="form-control" name="username" placeholder="Username or email">
                     </div>
 
-                    <div class="margin-bottom-25 input-group">
+                    <div class="input-group margin-bottom-25">
                         <span class="input-group-addon"><i class="glyphicon glyphicon-lock"></i></span>
-                        <input id="login-password" type="password" class="form-control" name="password" placeholder="password">
+                        <input type="password" class="form-control" name="password" placeholder="Password">
                     </div>
 
                     <div class="margin-bottom-25">
-                        <input type="checkbox" tabindex="3" class="" name="remember" id="remember">
+                        <input type="checkbox" name="remember" id="remember">
                         <label for="remember"> Remember Me</label>
                     </div>
 
-                    <div class="margin-bottom-25 input-group">
+                    <div class="input-group margin-bottom-25">
                         <div class="col-sm-12 controls">
                             <button type="submit" class="btn btn-primary">Submit</button>
                             <a id="btn-fblogin" href="#" class="btn btn-primary">Login with Facebook</a>
@@ -87,8 +111,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax'])) {
 
                     <div class="form-group">
                         <div class="col-md-12 control">
-                                Don't have an account!
-                                <a href="form_user.php">Sign Up Here</a>
+                            Don't have an account!
+                            <a href="form_user.php">Sign Up Here</a>
                         </div>
                     </div>
                 </form>
@@ -100,36 +124,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax'])) {
 </div>
 
 <script>
-// AJAX login
 document.getElementById('loginForm').addEventListener('submit', async function(e){
     e.preventDefault();
-
     const formData = new FormData(this);
-    formData.append('ajax', '1'); // đánh dấu request là AJAX
+    formData.append('ajax', '1');
 
-    const res = await fetch('login.php', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include' // <- rất quan trọng: cho phép nhận Set-Cookie và gửi cookie sau này
-    });
+    try {
+        const res = await fetch('login.php', {
+            method: 'POST',
+            body: formData,
+            credentials: 'include' // gửi cookie PHPSESSID
+        });
 
+        const data = await res.json();
+        const msgDiv = document.getElementById('loginMessage');
 
-    const data = await res.json();
+        if (data.success) {
+            msgDiv.style.color = 'green';
+            msgDiv.textContent = 'Login successful! User ID: ' + data.user_id;
 
-    const msgDiv = document.getElementById('loginMessage');
-    if(data.success){
-        // Lưu token vào localStorage
-        localStorage.setItem('session_token', data.token);
-        msgDiv.style.color = 'green';
-        msgDiv.textContent = 'Login successful! User ID: ' + data.user_id;
+            // Cập nhật CSRF token mới trong localStorage nếu cần
+            localStorage.setItem('csrf_token', data.csrf_token);
 
-        // Redirect sau 1 giây
-        setTimeout(()=> {
-            window.location.href = 'list_users.php';
-        }, 1000);
-    } else {
-        msgDiv.style.color = 'red';
-        msgDiv.textContent = data.message;
+            setTimeout(()=> window.location.href = 'list_users.php', 1000);
+        } else {
+            msgDiv.style.color = 'red';
+            msgDiv.textContent = data.message;
+        }
+    } catch (err) {
+        console.error('Fetch error:', err);
+        document.getElementById('loginMessage').textContent = "Network error!";
     }
 });
 </script>

@@ -4,6 +4,7 @@ if (!empty($_SESSION['id'])) {
     $id = $_SESSION['id'];
 }
 
+
 $keyword = '';
 if(!empty($_GET['keyword'])) {
     $keyword = $_GET['keyword'];

@@ -1,0 +1,2 @@
+[24-Sep-2025 15:21:16 UTC] PHP Warning:  session_id(): Session ID cannot be changed when a session is active in /var/www/html/session_middleware.php on line 23
+[24-Sep-2025 15:21:21 UTC] PHP Warning:  session_id(): Session ID cannot be changed when a session is active in /var/www/html/session_middleware.php on line 23
