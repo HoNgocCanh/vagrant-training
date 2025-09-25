@@ -7,13 +7,6 @@ start_session_from_request();
 
 // Kiểm tra login
 if (empty($_SESSION['id'])) {
-    // Nếu là API, có thể trả 401
-    // header('Content-Type: application/json');
-    // http_response_code(401);
-    // echo json_encode(['error' => 'Not authenticated']);
-    // exit;
-
-    // Hoặc redirect về login
     header('Location: login.php');
     exit;
 }
@@ -28,6 +21,11 @@ if (!empty($_GET['keyword'])) {
 
 // Lấy danh sách user
 $users = $userModel->getUsers($params);
+
+// Tạo CSRF token nếu chưa có
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 ?>
 <!DOCTYPE html>
 <html>
@@ -66,10 +64,14 @@ $users = $userModel->getUsers($params);
                                 <a href="view_user.php?id=<?php echo urlencode($user['id']) ?>">
                                     <i class="fa fa-eye" aria-hidden="true" title="View"></i>
                                 </a>
-                                <a href="delete_user.php?id=<?php echo urlencode($user['id']) ?>" 
-                                   onclick="return confirm('Are you sure you want to delete this user?')">
-                                    <i class="fa fa-eraser" aria-hidden="true" title="Delete"></i>
-                                </a>
+                                <!-- Form xóa user với CSRF token -->
+                                <form method="POST" action="delete_user.php" style="display:inline;">
+                                    <input type="hidden" name="id" value="<?php echo $user['id']; ?>">
+                                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                                    <button type="submit" onclick="return confirm('Are you sure you want to delete this user?');">
+                                        <i class="fa fa-eraser" aria-hidden="true" title="Delete"></i>
+                                    </button>
+                                </form>
                             </td>
                         </tr>
                     <?php } ?>
